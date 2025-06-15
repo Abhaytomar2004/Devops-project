@@ -1,0 +1,174 @@
+Jenkinsfile Explanation
+Language Used
+The Jenkinsfile is written in Groovy, which is the primary scripting language used for Jenkins pipelines. Groovy is a JVM-based language that combines features of Python, Ruby, and Smalltalk with Java-like syntax.
+
+Line-by-Line Explanation
+groovy
+pipeline {
+Declares a declarative pipeline (the modern way to define Jenkins pipelines)
+
+groovy
+    agent any
+Specifies that the pipeline can run on any available agent (Jenkins worker node)
+
+groovy
+    tools {
+        maven 'Maven 3.9.9'
+        jdk 'JDK-21'
+    }
+Configures tools to be automatically installed and added to PATH:
+
+Maven version 3.9.9
+
+JDK version 21
+
+groovy
+    environment {
+        DOCKER_CONFIG = "${env.WORKSPACE}/.docker"
+        MINIKUBE_HOME = 'C:/minikube'
+    }
+Sets environment variables:
+
+DOCKER_CONFIG: Path for Docker configuration
+
+MINIKUBE_HOME: Location of Minikube installation
+
+groovy
+    stages {
+Begins the declaration of pipeline stages
+
+groovy
+        stage('Checkout') {
+            steps {
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: 'JAV-01']],
+                    userRemoteConfigs: [[url: 'https://github.com/Abhaytomar2004/ImmunizationTracker.git']]
+                ])
+            }
+        }
+Checkout stage: Clones the source code from GitHub
+
+Checks out the 'JAV-01' branch
+
+From the specified GitHub repository URL
+
+groovy
+        stage('Build') {
+            steps {
+                dir('ImmunizationTracker') {
+                    bat 'mvn clean package -DskipTests'
+                }
+            }
+        }
+Build stage: Compiles and packages the application
+
+Changes to 'ImmunizationTracker' directory
+
+Runs Maven command (bat for Windows batch command):
+
+clean: Removes previous build artifacts
+
+package: Creates JAR file
+
+-DskipTests: Skips tests (for faster builds during development)
+
+groovy
+        stage('Docker Build & Push') {
+            steps {
+                dir('ImmunizationTracker') {
+                    script {
+                        // Build image first
+                        def image = docker.build("arnold21/immunizationtracker:${env.BUILD_ID}")
+Docker Build & Push stage:
+
+Changes to 'ImmunizationTracker' directory
+
+Uses script block for imperative Groovy code
+
+Builds Docker image with tag containing Jenkins build ID
+
+groovy
+                        // Then login and push (using token authentication)
+                        withCredentials([usernamePassword(
+                            credentialsId: 'docker-hub-credentials',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_TOKEN'
+                        )]) {
+                            bat """
+                                echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
+                                docker push ${image.imageName()}
+                            """
+                        }
+Securely accesses Docker Hub credentials stored in Jenkins
+
+Logs into Docker Hub using the credentials
+
+Pushes the built image to Docker Hub registry
+
+groovy
+        stage('Deploy to Minikube') {
+            steps {
+                script {
+                    // Check if Minikube is already running
+                    bat 'minikube status || minikube start --driver=docker --force'
+Deploy to Minikube stage:
+
+Checks Minikube status, starts it if not running
+
+Uses Docker driver (runs Minikube in a Docker container)
+
+groovy
+                    // Apply Kubernetes manifests
+                    dir('ImmunizationTracker/k8s') {
+                        bat 'kubectl apply -f mysql-pv.yaml'
+                        bat 'kubectl apply -f mysql-deployment.yaml'
+                        bat 'kubectl apply -f deployment.yaml'
+                        bat 'kubectl apply -f service.yaml'
+                    }
+Applies Kubernetes manifests in order:
+
+MySQL persistent volume
+
+MySQL deployment
+
+Application deployment
+
+Service for network access
+
+groovy
+    post {
+        always {
+            cleanWs()
+        }
+    }
+Post-build actions: Runs after all stages complete
+
+always: Runs regardless of build success/failure
+
+cleanWs(): Cleans the workspace (removes all files)
+
+Where the Dockerfile Comes Into Existence
+The Dockerfile is not shown in your Jenkinsfile, but it's a critical component that must exist in your project. Here's how it fits in:
+
+Location: Typically in your project root (ImmunizationTracker/Dockerfile)
+
+When it's used: During the "Docker Build & Push" stage when docker.build() is called
+
+What it does: Contains instructions for building your application image:
+
+Base image (e.g., openjdk)
+
+Copying your JAR file
+
+Setting entry points
+
+Configuring ports
+
+Example Dockerfile might look like:
+
+dockerfile
+FROM openjdk:21-jdk
+COPY target/your-app.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java","-jar","/app.jar"]
+The Jenkins pipeline automatically looks for this Dockerfile when building the image. The Dockerfile is essential because it defines how your application should be containerized.
