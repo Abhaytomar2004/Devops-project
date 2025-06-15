@@ -1,0 +1,212 @@
+Kubernetes Explained: From Basics to Your Project Implementation
+1. What is Kubernetes?
+Kubernetes (often abbreviated as K8s) is an open-source container orchestration platform that automates:
+
+Deployment of containerized applications
+
+Scaling (up/down based on demand)
+
+Management (health checks, load balancing, updates)
+
+Why Use Kubernetes?
+Runs your Docker containers efficiently in production
+
+Handles failures automatically (self-healing)
+
+Manages networking, storage, and security for containers
+
+Enables zero-downtime deployments
+
+2. Kubernetes Components Used in Your Project
+Your project uses these key Kubernetes components (defined in YAML files):
+
+a) Pod
+The smallest deployable unit in Kubernetes
+
+Contains one or more containers (your Spring Boot app runs here)
+
+Ephemeral (temporary) – if a pod crashes, Kubernetes creates a new one
+
+b) Deployment
+Manages the lifecycle of pods (creates/replaces them)
+
+Ensures the desired number of pods are running
+
+Allows rolling updates (no downtime during deployments)
+
+c) Service
+Provides a stable IP/DNS name for pods (even if pods restart)
+
+Load balances traffic between pods
+
+Your service.yaml exposes the app to the outside world
+
+d) PersistentVolume (PV) & PersistentVolumeClaim (PVC)
+PV: Storage resource in the cluster (like a physical disk)
+
+PVC: Request for storage by a pod (your MySQL database uses this)
+
+Defined in mysql-pv.yaml to ensure data persists even if pods restart
+
+3. Why YAML Files?
+Kubernetes uses YAML (or JSON) files to declare:
+
+What should be running (e.g., containers, storage)
+
+How it should run (e.g., replicas, resource limits)
+
+Key Benefits of YAML
+Declarative Configuration: You define the desired state (Kubernetes makes it happen).
+
+Version Control: YAML files can be tracked in Git.
+
+Reproducibility: Same YAML = same deployment every time.
+
+4. Your Kubernetes Files Explained
+a) mysql-pv.yaml (PersistentVolume)
+yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data"
+Creates a 5GB storage volume on the host machine (/mnt/data).
+
+MySQL will store data here (so it survives pod restarts).
+
+b) mysql-deployment.yaml (Deployment + Service)
+yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "password"
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+Deployment: Runs 1 MySQL pod with persistent storage.
+
+Service: Allows your Spring Boot app to connect to MySQL at mysql:3306.
+
+c) deployment.yaml (Your Spring Boot App)
+yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immunization-tracker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: immunization-tracker
+  template:
+    metadata:
+      labels:
+        app: immunization-tracker
+    spec:
+      containers:
+      - name: app
+        image: arnold21/immunizationtracker:latest
+        ports:
+        - containerPort: 8081
+Runs 1 instance of your Spring Boot app (from your Docker image).
+
+Listens on port 8081.
+
+d) service.yaml (Exposes Your App)
+yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: immunization-tracker
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8081
+  selector:
+    app: immunization-tracker
+Makes your app accessible outside the cluster.
+
+Routes external traffic on port 80 to your app’s port 8081.
+
+5. How Kubernetes Works in Your Project
+Step-by-Step Flow
+Jenkins applies YAML files (kubectl apply -f):
+
+bash
+kubectl apply -f mysql-pv.yaml
+kubectl apply -f mysql-deployment.yaml
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+Kubernetes creates resources:
+
+PersistentVolume → MySQL Deployment → Spring Boot Deployment → Service
+
+Your app runs:
+
+Spring Boot connects to MySQL at mysql:3306.
+
+Users access the app via the LoadBalancer service.
+
+6. Key Kubernetes Commands for Debugging
+Command	Purpose
+kubectl get pods	List running pods
+kubectl logs <pod-name>	View app logs
+kubectl describe pod <pod-name>	Debug pod issues
+kubectl get services	Check exposed services
+7. Why This Matters for Your Project
+Database persistence: MySQL data survives pod crashes.
+
+Scalability: You can increase replicas in deployment.yaml to handle more traffic.
+
+Zero-downtime updates: Change the Docker image tag → Kubernetes rolls out updates seamlessly.
+
+Production-ready: This same setup works on cloud providers (AWS, GCP, Azure).
+
+8. Next Steps
+Try scaling your app:
+
+yaml
+replicas: 3  # In deployment.yaml
+Add health checks (liveness/readiness probes).
+
+Explore Ingress for advanced routing (instead of LoadBalancer).
