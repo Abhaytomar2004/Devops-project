@@ -1,0 +1,69 @@
+Your Dockerfile Execution Flow:
+Base Image: Starts with eclipse-temurin:21-jdk-jammy (JDK 21)
+
+Workdir: Sets /app as working directory
+
+Prepares Maven:
+
+dockerfile
+COPY .mvn .mvn
+COPY mvnw pom.xml ./
+RUN apt-get update && apt-get install -y dos2unix && dos2unix mvnw && chmod +x mvnw
+Copies Maven wrapper files
+
+Ensures proper line endings for Unix environment
+
+Makes Maven wrapper executable
+
+Dependency Resolution:
+
+dockerfile
+RUN ./mvnw dependency:go-offline -B
+Pre-downloads dependencies for offline builds
+
+Source Code:
+
+dockerfile
+COPY src src
+Copies your application source code
+
+Build:
+
+dockerfile
+RUN ./mvnw clean package -DskipTests
+Compiles and packages your Spring Boot application (skipping tests)
+
+Configuration:
+
+dockerfile
+EXPOSE 8081
+RUN addgroup --system spring && adduser --system --ingroup spring spring
+USER spring:spring
+Declares port 8081
+
+Creates a non-root user for security
+
+Entrypoint:
+
+dockerfile
+ENTRYPOINT ["java", "-jar", "target/VaccineManagementSystem-0.0.1-SNAPSHOT.jar"]
+Defines how to run your application
+
+Key Points:
+Build Context: The entire ImmunizationTracker directory is sent to Docker daemon (because of the . in build command)
+
+Layer Caching: Each instruction creates a layer that's cached for faster subsequent builds
+
+Artifact Flow:
+
+Your Jenkins pipeline first creates a JAR file (mvn package)
+
+Then Docker build creates an image containing this JAR
+
+Finally, the image is pushed to Docker Hub
+
+Multi-Stage Benefit: While your current Dockerfile is single-stage, you could optimize it further by:
+
+Using a multi-stage build to reduce final image size
+
+Separating build dependencies from runtime environment
